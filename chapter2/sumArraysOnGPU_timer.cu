@@ -56,6 +56,13 @@ __global__ void sumArraysOnGPU(float *A,float *B,float *C,const int N){
     if (i<N) C[i] = A[i] + B[i];
     }
 
+__global__ void sumArraysOnGPU2D(float *A,float *B,float *C,int N){
+    int ix = blockIdx.x * blockDim.x + threadIdx.x; 
+    int iy = blockIdx.y;
+    int idx = ix + iy * blockDim.x;
+    if (idx < N) C[idx] = A[idx] + B[idx];        
+    }
+
 int main(int argc, char **argv){
     printf("%s Starting..\n",argv[0]);
 
@@ -105,18 +112,19 @@ int main(int argc, char **argv){
     cudaMemcpy(d_C,gpuRef,nBytes,cudaMemcpyHostToDevice);
     
     // invoke kernel at host side
-    int iLen = 512;
-    dim3 block(iLen);
-    dim3 grid((nElem+ block.x-1)/block.x);
-    
+    dim3 block(256,2);
+    //dim3 block(512,1);
+    dim3 grid((nElem+block.x-1)/block.x,1);
+
     // count the GPU time elaps
     iStart = seconds();
-    sumArraysOnGPU<<<grid,block>>>(d_A,d_B,d_C,nElem);
+    //sumArraysOnGPU<<<grid,block>>>(d_A,d_B,d_C,nElem);
+    sumArraysOnGPU2D<<<grid,block>>>(d_A,d_B,d_C,nElem);
     cudaDeviceSynchronize();
     iElaps = seconds() - iStart;
     
-    printf("Execution configure <<<%d,%d>>>\n Time elapsed %f"\
-        "sec\n",grid.x,block.x,iElaps);
+    printf("Execution configure <<<(%d,%d),(%d,%d)>>>\n Time elapsed %f"\
+        "sec\n",grid.x,grid.y,block.x,block.y,iElaps);
              
     // GPU result from d_C to host
     CHECK(cudaMemcpy(gpuRef,d_C,nBytes,cudaMemcpyDeviceToHost));

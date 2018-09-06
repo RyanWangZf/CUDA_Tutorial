@@ -24,7 +24,7 @@ void checkResult(float *hostRef,  float *gpuRef, const int N){
         if (abs(hostRef[i]-gpuRef[i])>epsilon){
             match = 0;
             printf("Matrix do not match! \n");
-            printf("host %5.2f gpu % 5.2f at current %d",hostRef[i],gpuRef[i],i);
+            printf("host %5.2f gpu % 5.2f at current %d \n",hostRef[i],gpuRef[i],i);
             break;
             }
         }
@@ -66,6 +66,13 @@ __global__ void sumMatrixOnGPU1D(float *MatA,float *MatB,float *MatC,int nx,int 
         }
     }
 
+__global__ void sumMatrixOnGPUMix(float *MatA,float *MatB,float *MatC,int nx,int ny){
+    // 2D grid & 1D block
+    unsigned int ix = threadIdx.x + blockIdx.x * blockDim.x;
+    unsigned int iy = blockIdx.y;
+    unsigned int idx = iy*nx + ix;
+    if (ix < nx && iy < ny) MatC[idx] = MatA[idx] + MatB[idx];
+    }
 
 int main(int argc, char **argv){
 
@@ -96,9 +103,7 @@ int main(int argc, char **argv){
     
     memset(hostRef,0,nBytes);
     memset(gpuRef,0,nBytes);
-
-    printf("Matrix size: nx %d ny %d \n",nx,ny);
-    
+ 
     double iStart,iElaps;
     
     // add matrix at the host side
@@ -115,22 +120,17 @@ int main(int argc, char **argv){
     
     cudaMemcpy(d_MatA,h_A,nBytes,cudaMemcpyHostToDevice);
     cudaMemcpy(d_MatB,h_B,nBytes,cudaMemcpyHostToDevice);
-    /*
-    int dimx = 32;
-    int dimy = 16;
-    dim3 block(dimx,dimy);
-    dim3 grid((nx+block.x-1)/block.x,(ny+block.y-1)/block.y);
-    */
-    dim3 block(16,1);
-    dim3 grid((nx+block.x-1)/block.x,1);
+    
+    // define the dimension of block & grid
+    dim3 block(256);
+    dim3 grid((nx+block.x-1)/block.x,ny);
 
     iStart = seconds();
-    // sumMatrixOnGPU2D <<<grid,block>>> (d_MatA,d_MatB,d_MatC,nx,ny);
-    sumMatrixOnGPU1D <<<grid,block>>> (d_MatA,d_MatB,d_MatC,nx,ny);
+    sumMatrixOnGPUMix <<<grid,block>>> (d_MatA,d_MatB,d_MatC,nx,ny);
 
     cudaDeviceSynchronize();
     iElaps = seconds() - iStart;
-    printf("sumMatrixOnGPU2D <<<(%d,%d),(%d,%d)>>> elapsed %f sec\n",
+    printf("sumMatrixOnGPUMix <<<(%d,%d),(%d,%d)>>> elapsed %f sec\n",
         grid.x,grid.y,block.x,block.y,iElaps);
 
     cudaMemcpy(gpuRef,d_MatC,nBytes,cudaMemcpyDeviceToHost);
