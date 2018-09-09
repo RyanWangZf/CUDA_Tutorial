@@ -1,4 +1,4 @@
-#Chapter3  
+# Chapter3  
 ## 并行性  
 ### 1. 活跃线程束(warp)  
 可实现占用率(achieved_occupancy):  
