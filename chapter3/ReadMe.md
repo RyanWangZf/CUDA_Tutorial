@@ -36,6 +36,14 @@ reduceUnrolling2的处理速度为0.0068sec,相比reduceInterleaved再次提高�
 3) 循环完全展开: 已知一个循环中的迭代次数, 就可以把循环完全展开. 书中叙述该循环展开kernel较上述UnrollWarps4更快, 但经笔者本地实验, 完全展开反而略微降低了速度. 查看阻塞程度, CompleteUnrollWarps4为35.61%, 略高于UnrollWarps4的34.46%.  
 4) 模板函数: 使用模板参数替代块大小作为if语句的判断来展开循环, 好处在于编译时如果if语句条件为False会被直接删除,使内循环更有效率.  
 笔者实验证明其运行速度为0.0025sec,略有提升. 可以使用 nvprof --metrics gld_efficiecny,gst_efficiency ./reduceInteger查看内存的加载和存储效率.  
+### 3.动态并行:  
+动态并行是指在GPU端直接创建和同步新的GPU内核. 动态地利用GPU硬件调度器和加载平衡器,并且减少主机和设备之间的数据传输.  
+1) 嵌套执行: 内核分为parent和child,parent启动子网格时先与child显式同步,child才能执行; 只有在child全部完后,parent才会完成.共享内存和局部内存对于线程块或线程是私有的,在parent和child之间不一致.  
+编写第一个嵌套helloworld,需要注意的是编译时需要加上nvcc -arch=sm_50 -rdc=true nestedHelloWorld.cu -o nestedHelloWorld -lcudadevrt, 其中-rdc=true即强制生成可重定位的设备代码,这是动态并行的一个要求,-lcudadevrt则为动态并行需要的设备运行时库的明确链接.  
+2) 嵌套归约: 归约可以表示为一个递归函数,如cpuRecursiveReduce函数就是利用cpu进行归约计算. 和cpu归约类似, gpu也可以采用嵌套网格的方式进行归约计算. 但是计算速度特别慢0.25sec, 相比之下cpu函数为0.0028sec. 原因可能是大量的内核调用(子网格启动)和同步(__syncthreads).  
+去除函数内部所有的同步过程, 因为每个子线程只需要父线程的数值来指导部分归约. 速度为0.033sec,提高很多但是还是很慢.  
+进一步优化线程调用, 上述调用方式为每个线程块均调动子网格, 最初有2048个线程块, 每个线程块执行8次递归, 总共会创造2048*8=16384个子线程,资源消耗巨大. 因此采用第二种子网格调用模式, 即网格中第一个线程块的第一个线程在每一步嵌套时都调用子网格(图流程见书P225 fig3-29/3-30), 这样调用的核函数个数等于递归次数8, 节省了大量的计算资源. 速度为0.000872sec,超过了cpu的计算速度. 可以使用nvprof ./nestedReduce 查看calls(device)项验证上述说法.  
+
 
 
 
