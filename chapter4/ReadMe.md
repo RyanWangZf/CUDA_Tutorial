@@ -5,9 +5,9 @@
 ## CUDA内存模型  
 1) 存储器类型: 分为可编程和不可编程两类, CUDA内存模型提出了多种可编程内存类型: 寄存器, 共享内存, 本地内存, 常量内存, 纹理内存, 全局内存(见P240图4-2).  
 2) 寄存器: 对于每个线程是私有的, 如果一个核函数使用了超过硬件限制数量的寄存器,则会用本地内存替代多占用的寄存器,会给性能带来不利影响. 可在代码中显式加上  
-<__global__ void"  
-__launch__ bounds__(maxThreadsPerblock,minBlocksPerMultiprocessor)  
-kernel(...){//body}>  
+>__global__ void"  
+>__launch__ bounds__(maxThreadsPerblock,minBlocksPerMultiprocessor)  
+>kernel(...){//body}  
 其中maxThreadsPerblock指出每个线程块最大线程数, minBlockPerMultiprocessor指明每个SM中预期最小常驻线程块数量.  
 也可以采用编译选项 --maxrregcount=32 指定代码里所有核函数使用的寄存器最大数量.  
 寄存器和核函数生命周期一致.  
