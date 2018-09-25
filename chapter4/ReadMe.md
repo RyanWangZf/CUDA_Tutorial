@@ -54,6 +54,22 @@ cudaHostAlloc(void **pHost,size_t count,unsigned int flags);
 cudaHostGetDevicePointer(void **pDevice,void *pHost,unsigned int flags);  
 返回在pDevice中的设备指针,该指针可以在设备上引用以访问映射得到的固定主机内存.  
 通过sumArrayZerocopy.cu计算时间,sumArraysZeroCopy 5.0us,而sumArraysOnGPU 2.9us.  
+5) 统一虚拟寻址(UVA) : 在CUDA4.0被引入, 支持64位Linux系统, UVA支持主机内存和设备内存共享同一个虚拟地址空间(见4-5).  
+由cudaHostMalloc分配的固定主机内存具有相同的主机和设备指针. 因此无需获取设备指针或管理物理上数据完全相同的两个指针cudaHostGetDevicePointer.  
+6) 统一内存寻址: 在CUDA6.0被引入, 统一内存中创建了一个托管内存池, 内存池中已分配的空间可以用相同的内存地址(指针)在GPU和CPU上访问. 托管内存和设备内存可以互操作, 它们都使用cudaMalloc创建. 核函数可以操作托管内存和明确分配调用的未托管内存.  
+托管内存可添加 '__device__ __managed__ int y' 注释以静态声明一个设备变量为托管变量.  
+也可以使用 'cudaMallocManaged(void **devptr, size_t size, unsigned int flags=0)' 动态分配托管内存(CUDA 6.0 暂不支持此函数).  
+## 内存访问模式
+1) 对齐与合并访问: 所有的应用程序数据最初存于DRAM上, 核函数的内存请求通常以128bit和32bit两种内存事务来实现 (P272 图4-6).  
+所有对全局内存的访问都通过二级缓存,部分通过一级缓存.两级缓存都用到的内存事务为128bit, 反之只使用了二级缓存的访问则由32bit内存事务实现.  
+当设备内存事务的第一个地址是用于事务服务的缓存粒度的偶数倍时(32bit或128bit)就会出现对齐内存访问, 非对齐的加载会造成带宽浪费.  
+当一个线程束的全部32个线程访问一个连续的内存块时,就会出现合并内存访问. 优化内存事务效率即用最少的事务次数满足最多的内存请求.  
+2) 全局内存读取: 禁用一级缓存(编译器选项): '-Xptxas -dlcm=cg'; 此时对全局内存的加载请求直接进入二级缓存, 每个事务可由一个/两个或四个部分执行,每个部分32bit.  
+启用一级缓存: '-Xptxas -dlcm=ca'; 此时首先尝试一级缓存, 一个请求为128bit.  
+非对齐读取示例readSegment.cu用于比较不同偏移量读取内存的核函数速度, 实验表明:  
+offset=0: 0.000361 sec; offset = 11: 0.000377 sec; offset = 128: 0.000366;  
+
+
 
 
 
