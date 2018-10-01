@@ -71,6 +71,45 @@ CPU与GPU之间通过PCIe Gen2总线相连,带宽为8GB/s, GPU和GPU内存带宽
 启用一级缓存: `-Xptxas -dlcm=ca;` 此时首先尝试一级缓存, 一个请求为128bit.  
 非对齐读取示例readSegment.cu用于比较不同偏移量读取内存的核函数速度, 实验表明:  
 offset=0: 0.000361 sec; offset = 11: 0.000377 sec; offset = 128: 0.000366;  
+使用 `nvprof --devices 0 --metrics gld_effiency ./readSegment 0` 查看全局加载效率,  
+经实验发现, offset = 0 / 11 / 128 时, 加载效率分别为 100% / 80% / 100% .  
+p.s. 经实验发现, 无论打开或者关闭一级缓存, readSegment 11 的运行加载效率都为80%, 与书上实验结果 49% 和 80%不符.  
+3) 只读缓存: 加载粒度为32bit, 指导内存通过只读缓存的方式读取: 使用函数__ldg 或者 在间接引用的指针上使用修饰符.  
+比如在kernel中拷贝语句`out[idx]=in[idx]`重写为`out[idx]=__ldx(&in[idx])`  
+或者将常量`__restrict__`修饰符应用到指针上, 帮助nvcc识别无别名指针, 自动通过只读缓存指导无别名指针的加载.  
+如`__global__ void copyKernel(int * __restrict__ out,const int * __restrict__ in){\\}`  
+3) 全局内存写入: 一级缓存不能用在GPU上进行存储操作, 在发送到设备内存之前操作只通过二级缓存, 即在32bit粒度被执行.  
+内存事务可被同时分为一段/两端/四段 (注意,一段最小,四段最大), 几种对齐以及非对齐示例见P287.  
+通过writeSegment实验, 偏移在 0 / 11 / 128 时 运行时间为 0.000360 / 0.000396 / 0.000362 sec. 可见非对齐写入时的速度最慢.  
+4) 结构体数组与数组结构体: 数组结构体(AoS) 和 结构体数组(SoA).  
+使用AoS存储成对的浮点数据:  
+`struct innerStruct{  
+	float x,y;  
+	};`  
+然后`struct innerStruct myAos[N];`定义结构体数组,利用AoS组织数据的好处是,它存储的是空间相邻的数据,这在CPU上会有良好的缓存局部性.  
+使用SoA存储:  
+`struct innerArray{
+	float x[N];
+	float y[N];
+	};`  
+然后`struct innerArray moa;` 定义一个变量, 每个字段的所有值都被分到各自数组中, 这不仅能将相邻数据点紧密储存起来,也能将跨数组的独立数据点存储起来.  
+使用AoS模式在GPU上存储并执行一个只有x字段的数据会导致50%的带宽损失,因为y值被隐式地加载;   
+而SoA模式没有相同字段元素的交叉存取,GPU上的SoA提供了合并内存访问,可以对全局内存实现更高效的利用.  
+因此在CUDA C编程中普遍倾向于使用SoA,接下来比较AoS和SoA布局的性能差异.  
+使用AoS核函数时,测试结果由`nvprof --metrics gld_efficiency,gsd_efficiency ./simpleMathAoS` 得到  
+请求加载和存储的效率均为50%, 说明AoS布局确实浪费了50%的带宽.  
+使用SoA核函数,效率gld_efficiency和gsd_efficiency均为100%.  
+此外值得一提的是,SoA运行0.001162sec,而AoS运行0.001395sec, 可见SoA核函数速度也更快.  
+>*additionals*: 关于C语言中 `->` 符号的作用, 它用于指向结构体和C++中的class等含有子数据的指针用来取得子数据. 对于脚本simpleMathSoA.cu中的`ip->x[i] = ...`,其实际相当于 `(*ip).x[i]=...`, ip是指向结构体InnerArray的指针.  
+
+
+
+
+
+
+
+
+
 
 
 
