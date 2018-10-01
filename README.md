@@ -1,5 +1,6 @@
-# CUDA_Practices
+# CUDA_Tutorials
 My CUDA C practices while learning the CUDA C Programming Introduction.  
+It is a synthetic introduction of the High Performance Computing on GPU.
 ### chapter 1 ###
 helloworld  
 ### chapter 2 ###
